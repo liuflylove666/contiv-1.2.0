@@ -1,0 +1,146 @@
+# This manifest installs contiv-netplugin container, as well
+# as the Contiv CNI plugins and network config on
+# each master and worker node in a Kubernetes cluster.
+kind: DaemonSet
+apiVersion: extensions/v1beta1
+metadata:
+  name: contiv-netplugin
+  namespace: kube-system
+  labels:
+    k8s-app: contiv-netplugin
+spec:
+  selector:
+    matchLabels:
+      k8s-app: contiv-netplugin
+  template:
+    metadata:
+      labels:
+        k8s-app: contiv-netplugin
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '9004'
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+    spec:
+      hostNetwork: true
+      hostPID: true
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      serviceAccountName: contiv-netplugin
+      containers:
+        - name: netplugin-exporter
+          image: contiv/stats
+          env:
+            - name: CONTIV_ETCD
+              valueFrom:
+                configMapKeyRef:
+                  name: contiv-config
+                  key: contiv_etcd
+            - name: EXPORTER_MODE
+              value: 'netplugin'
+        - name: contiv-netplugin
+          image: lcb:dev 
+          env:
+            - name: CONTIV_ROLE
+              value: netplugin
+            - name: CONTIV_NETPLUGIN_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: contiv-config
+                  key: contiv_mode
+            - name: CONTIV_NETPLUGIN_VTEP_IP
+              valueFrom:
+                 fieldRef:
+                    fieldPath: status.podIP
+            - name: CONTIV_NETPLUGIN_ETCD_ENDPOINTS
+              valueFrom:
+                configMapKeyRef:
+                  name: contiv-config
+                  key: contiv_etcd
+            - name: CONTIV_CNI_CONFIG
+              valueFrom:
+                configMapKeyRef:
+                  name: contiv-config
+                  key: contiv_cni_config
+            - name: CONTIV_NETPLUGIN_ETCD_TLS_KEY 
+              valueFrom:
+                configMapKeyRef:
+                  name: contiv-config
+                  key: etcd_keyfile
+            - name: CONTIV_NETPLUGIN_ETCD_TLS_CERT 
+              valueFrom:
+                configMapKeyRef:
+                  name: contiv-config
+                  key: etcd_certfile
+            - name: CONTIV_NETPLUGIN_ETCD_TLS_CA
+              valueFrom:
+                configMapKeyRef:
+                  name: contiv-config
+                  key: etcd_cafile
+            - name: CONTIV_K8S_CONFIG
+              valueFrom:
+                configMapKeyRef:
+                  name: contiv-config
+                  key: contiv_k8s_config
+            - name: CONTIV_NETPLUGIN_FORWARD_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: contiv-config
+                  key: contiv_fwdmode
+            - name: CONTIV_NETPLUGIN_VLAN_UPLINKS 
+              valueFrom:
+                configMapKeyRef:
+                  name: contiv-config
+                  key: vlan_if
+            - name: CONTIV_NETPLUGIN_NET_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: contiv-config
+                  key: contiv_netmode
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - mountPath: /etc/openvswitch
+              name: etc-openvswitch
+              readOnly: false
+            - mountPath: /lib/modules
+              name: lib-modules
+              readOnly: false
+            - mountPath: /var/run
+              name: var-run
+              readOnly: false
+            - mountPath: /var/contiv
+              name: var-contiv
+              readOnly: false
+            - mountPath: /var/log/contiv
+              name: var-log-contiv
+              readOnly: false
+            - mountPath: /opt/cni/bin
+              name: cni-bin-dir
+              readOnly: false
+            - mountPath: /etc/cni/net.d/
+              name: etc-cni-dir
+              readOnly: false
+      volumes:
+        # Used by contiv-netplugin
+        - name: etc-openvswitch
+          hostPath:
+            path: /etc/openvswitch
+        - name: lib-modules
+          hostPath:
+            path: /lib/modules
+        - name: var-run
+          hostPath:
+            path: /var/run
+        - name: var-contiv
+          hostPath:
+            path: /var/contiv
+        - name: cni-bin-dir
+          hostPath:
+            path: /opt/cni/bin
+        - name: etc-cni-dir
+          hostPath:
+            path: /etc/cni/net.d/
+        - name: var-log-contiv
+          hostPath:
+            path: /var/log/contiv
